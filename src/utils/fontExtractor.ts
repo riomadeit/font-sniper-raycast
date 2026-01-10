@@ -113,44 +113,109 @@ function normalizeWeight(weight: string): string {
   return weightMap[w] || weight;
 }
 
-function extractUsedFontFamilies(css: string): Set<string> {
-  const families = new Set<string>();
+// Common selectors that indicate primary page fonts (not library/widget fonts)
+const PRIMARY_SELECTORS = [
+  "body", "html", ":root", "*",
+  "p", "h1", "h2", "h3", "h4", "h5", "h6",
+  "a", "span", "div", "li", "ul", "ol",
+  "main", "article", "section", "header", "footer", "nav", "aside",
+  "button", "input", "textarea", "label", "form",
+  "td", "th", "table", "caption",
+  "blockquote", "pre", "code", "em", "strong", "b", "i",
+];
 
-  // Remove @font-face blocks first so we don't match their font-family declarations
-  const cssWithoutFontFace = css.replace(/@font-face\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/gi, "");
+// Library/widget class patterns to skip
+const SKIP_PATTERNS = [
+  /\.katex/i, /\.math/i, /\.latex/i, /\.mathjax/i,
+  /\.hljs/i, /\.highlight/i, /\.prism/i, /\.syntax/i,
+  /\.fa-/i, /\.icon/i, /\.material-icons/i,
+  /\.emoji/i, /\.flag-/i,
+];
 
-  // Match font-family in regular CSS rules
-  // This matches: font-family: "Font Name", sans-serif; or font: 16px "Font Name";
-  const fontFamilyRegex = /font-family\s*:\s*([^;{}]+)/gi;
-  let match;
+function isPrimarySelector(selector: string): boolean {
+  // Skip selectors matching library patterns
+  for (const pattern of SKIP_PATTERNS) {
+    if (pattern.test(selector)) return false;
+  }
 
-  while ((match = fontFamilyRegex.exec(cssWithoutFontFace)) !== null) {
-    const value = match[1];
-    // Split by comma and extract each font name
-    const fontNames = value.split(",").map((f) => {
-      // Remove quotes and trim
-      return f.trim().replace(/^["']|["']$/g, "").trim();
-    });
-    for (const name of fontNames) {
-      // Skip generic font families
-      const genericFonts = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded", "inherit", "initial", "unset"];
-      if (!genericFonts.includes(name.toLowerCase()) && name.length > 0) {
-        families.add(name);
-      }
+  const selectorLower = selector.toLowerCase();
+
+  // Check if selector targets primary elements
+  for (const primary of PRIMARY_SELECTORS) {
+    // Match: body, .class body, body.class, #id body, etc.
+    const regex = new RegExp(`(^|[\\s,>+~])${primary}([\\s,>+~.#:\\[]|$)`, "i");
+    if (regex.test(selectorLower) || selectorLower === primary) {
+      return true;
     }
   }
 
-  // Also check shorthand 'font' property
-  const fontShorthandRegex = /font\s*:\s*[^;{}]+/gi;
-  while ((match = fontShorthandRegex.exec(cssWithoutFontFace)) !== null) {
-    const value = match[0];
-    // Extract quoted font names from shorthand
-    const quotedFonts = value.match(/["']([^"']+)["']/g);
-    if (quotedFonts) {
-      for (const quoted of quotedFonts) {
-        const name = quoted.replace(/^["']|["']$/g, "").trim();
-        if (name.length > 0) {
-          families.add(name);
+  // Also accept simple class/id selectors on common patterns
+  if (/^\.(container|wrapper|content|main|page|app|root|layout)/i.test(selector)) {
+    return true;
+  }
+
+  return false;
+}
+
+function extractFontFamiliesFromValue(value: string): string[] {
+  const families: string[] = [];
+  const genericFonts = [
+    "serif", "sans-serif", "monospace", "cursive", "fantasy",
+    "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded",
+    "inherit", "initial", "unset", "revert",
+  ];
+
+  // Split by comma and extract each font name
+  const fontNames = value.split(",").map((f) => {
+    return f.trim().replace(/^["']|["']$/g, "").trim();
+  });
+
+  for (const name of fontNames) {
+    if (!genericFonts.includes(name.toLowerCase()) && name.length > 0) {
+      families.push(name);
+    }
+  }
+
+  return families;
+}
+
+function extractUsedFontFamilies(css: string): Set<string> {
+  const families = new Set<string>();
+
+  // Remove @font-face blocks first
+  const cssWithoutFontFace = css.replace(
+    /@font-face\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/gi,
+    "",
+  );
+
+  // Match CSS rules: selector { ... font-family: value; ... }
+  // This regex captures: selector(s) { declarations }
+  const ruleRegex = /([^{}]+)\{([^{}]+)\}/g;
+  let ruleMatch;
+
+  while ((ruleMatch = ruleRegex.exec(cssWithoutFontFace)) !== null) {
+    const selector = ruleMatch[1].trim();
+    const declarations = ruleMatch[2];
+
+    // Only process rules targeting primary selectors
+    if (!isPrimarySelector(selector)) continue;
+
+    // Look for font-family in declarations
+    const fontFamilyMatch = declarations.match(/font-family\s*:\s*([^;]+)/i);
+    if (fontFamilyMatch) {
+      const fontFamilies = extractFontFamiliesFromValue(fontFamilyMatch[1]);
+      fontFamilies.forEach((f) => families.add(f));
+    }
+
+    // Also check font shorthand
+    const fontMatch = declarations.match(/font\s*:\s*([^;]+)/i);
+    if (fontMatch) {
+      // Extract quoted font names from shorthand
+      const quotedFonts = fontMatch[1].match(/["']([^"']+)["']/g);
+      if (quotedFonts) {
+        for (const quoted of quotedFonts) {
+          const name = quoted.replace(/^["']|["']$/g, "").trim();
+          if (name.length > 0) families.add(name);
         }
       }
     }
@@ -284,7 +349,16 @@ async function fetchCSSWithImports(
   }
 }
 
-export async function extractFonts(pageUrl: string): Promise<FontInfo[]> {
+export interface ExtractOptions {
+  /** If true, show all formats. If false, only show best format per variant (default: false) */
+  showAllFormats?: boolean;
+}
+
+export async function extractFonts(
+  pageUrl: string,
+  options: ExtractOptions = {},
+): Promise<FontInfo[]> {
+  const { showAllFormats = false } = options;
   const allFonts: FontInfo[] = [];
   const usedFamilies = new Set<string>();
 
@@ -338,10 +412,19 @@ export async function extractFonts(pageUrl: string): Promise<FontInfo[]> {
     return false;
   });
 
-  // Deduplicate: keep only the best format per family+weight+style
-  const deduped = deduplicateFonts(usedFonts);
+  // Deduplicate by format unless showAllFormats is true
+  if (showAllFormats) {
+    // Just deduplicate by exact URL
+    const seen = new Set<string>();
+    return usedFonts.filter((font) => {
+      if (seen.has(font.url)) return false;
+      seen.add(font.url);
+      return true;
+    });
+  }
 
-  return deduped;
+  // Keep only the best format per family+weight+style
+  return deduplicateFonts(usedFonts);
 }
 
 export async function checkFontAccessibility(

@@ -12,7 +12,11 @@ import {
 } from "@raycast/api";
 import { useState, useEffect } from "react";
 import { FontInfo } from "./types";
-import { extractFonts, checkFontAccessibility } from "./utils/fontExtractor";
+import {
+  extractFonts,
+  checkFontAccessibility,
+  ExtractOptions,
+} from "./utils/fontExtractor";
 import {
   downloadFont,
   downloadFonts,
@@ -29,6 +33,7 @@ interface FontWithSelection extends FontInfo {
 export default function ExtractFonts() {
   const [viewState, setViewState] = useState<ViewState>("form");
   const [url, setUrl] = useState("");
+  const [showAllFormats, setShowAllFormats] = useState(false);
   const [fonts, setFonts] = useState<FontWithSelection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
@@ -67,7 +72,10 @@ export default function ExtractFonts() {
     prefillUrl();
   }, []);
 
-  async function handleSubmit(values: { url: string }) {
+  async function handleSubmit(values: {
+    url: string;
+    showAllFormats: boolean;
+  }) {
     const targetUrl = values.url.trim();
 
     if (!isValidUrl(targetUrl)) {
@@ -82,6 +90,7 @@ export default function ExtractFonts() {
     setViewState("loading");
     setIsLoading(true);
     setSourceUrl(targetUrl);
+    setShowAllFormats(values.showAllFormats);
 
     try {
       const toast = await showToast({
@@ -91,7 +100,8 @@ export default function ExtractFonts() {
       });
 
       // Extract fonts from the page
-      const extractedFonts = await extractFonts(targetUrl);
+      const options: ExtractOptions = { showAllFormats: values.showAllFormats };
+      const extractedFonts = await extractFonts(targetUrl, options);
 
       if (extractedFonts.length === 0) {
         toast.style = Toast.Style.Failure;
@@ -252,7 +262,13 @@ export default function ExtractFonts() {
           onChange={setUrl}
           autoFocus
         />
-        <Form.Description text="Enter a URL to extract and download fonts from the website's CSS." />
+        <Form.Checkbox
+          id="showAllFormats"
+          label="Show all formats (WOFF, TTF, OTF, etc.)"
+          value={showAllFormats}
+          onChange={setShowAllFormats}
+          info="By default, only the best format (WOFF2) is shown per font variant"
+        />
       </Form>
     );
   }
