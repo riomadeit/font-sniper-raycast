@@ -167,8 +167,8 @@ export default function ExtractFonts() {
         toast.title = "No fonts found";
         toast.message =
           extractedFonts.length > 0
-            ? "Fonts were found but filtered out by your preferences"
-            : "No downloadable fonts found on this page";
+            ? "This page doesn't contain any fonts that match your preferences"
+            : "This page doesn't contain any downloadable fonts";
         setViewState("form");
         setIsLoading(false);
         return;
