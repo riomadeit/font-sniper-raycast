@@ -237,15 +237,35 @@ function getFormatPriority(format: FontFormat): number {
   return priorities[format];
 }
 
+function normalizeFontKey(font: FontInfo): string {
+  // Normalize family: lowercase, collapse whitespace, remove quotes
+  const family = font.family
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Normalize weight: use our weight mapping or lowercase
+  const weight = (font.weight || "regular").toLowerCase();
+
+  // Normalize style
+  const style = (font.style || "normal").toLowerCase();
+
+  return `${family}|${weight}|${style}`;
+}
+
 function deduplicateFonts(fonts: FontInfo[]): FontInfo[] {
-  // Group by family + weight + style, keep only the best format
+  // Group by normalized family + weight + style, keep only the best format
   const groups = new Map<string, FontInfo>();
 
   for (const font of fonts) {
-    const key = `${font.family}|${font.weight || ""}|${font.style || ""}`;
+    const key = normalizeFontKey(font);
     const existing = groups.get(key);
 
-    if (!existing || getFormatPriority(font.format) > getFormatPriority(existing.format)) {
+    if (
+      !existing ||
+      getFormatPriority(font.format) > getFormatPriority(existing.format)
+    ) {
       groups.set(key, font);
     }
   }
