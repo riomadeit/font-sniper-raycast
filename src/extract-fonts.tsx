@@ -9,20 +9,23 @@ import {
   open,
   Icon,
   Color,
+  getPreferenceValues,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
-import { FontInfo } from "./types";
-import {
-  extractFonts,
-  checkFontAccessibility,
-  ExtractOptions,
-} from "./utils/fontExtractor";
-import {
-  downloadFont,
-  downloadFonts,
-  getDownloadFolder,
-} from "./utils/downloader";
+import { homedir } from "os";
+import { join } from "path";
+import { FontInfo, FontFormat } from "./types";
+import { extractFonts, checkFontAccessibility } from "./utils/fontExtractor";
+import { downloadFont, downloadFonts } from "./utils/downloader";
 import { isValidUrl, getDomain } from "./utils/urlHelpers";
+
+interface Preferences {
+  showWoff2: boolean;
+  showWoff: boolean;
+  showTtf: boolean;
+  showOtf: boolean;
+  showEot: boolean;
+}
 
 type ViewState = "form" | "loading" | "list";
 
@@ -30,10 +33,61 @@ interface FontWithSelection extends FontInfo {
   selected: boolean;
 }
 
+// Sort order: TTF first, OTF second, WOFF2 third, then others
+function getFormatSortOrder(format: FontFormat): number {
+  const order: Record<FontFormat, number> = {
+    ttf: 0,
+    otf: 1,
+    woff2: 2,
+    woff: 3,
+    eot: 4,
+    unknown: 5,
+  };
+  return order[format];
+}
+
+function sortFontsByFormat(fonts: FontWithSelection[]): FontWithSelection[] {
+  return [...fonts].sort((a, b) => {
+    // First sort by format
+    const formatDiff = getFormatSortOrder(a.format) - getFormatSortOrder(b.format);
+    if (formatDiff !== 0) return formatDiff;
+    // Then by family name
+    const familyDiff = a.family.localeCompare(b.family);
+    if (familyDiff !== 0) return familyDiff;
+    // Then by weight
+    return (a.weight || "").localeCompare(b.weight || "");
+  });
+}
+
+function filterFontsByPreferences(
+  fonts: FontInfo[],
+  prefs: Preferences,
+): FontInfo[] {
+  return fonts.filter((font) => {
+    switch (font.format) {
+      case "woff2":
+        return prefs.showWoff2;
+      case "woff":
+        return prefs.showWoff;
+      case "ttf":
+        return prefs.showTtf;
+      case "otf":
+        return prefs.showOtf;
+      case "eot":
+        return prefs.showEot;
+      default:
+        return true;
+    }
+  });
+}
+
 export default function ExtractFonts() {
+  const preferences = getPreferenceValues<Preferences>();
   const [viewState, setViewState] = useState<ViewState>("form");
   const [url, setUrl] = useState("");
-  const [showAllFormats, setShowAllFormats] = useState(false);
+  const [downloadFolder, setDownloadFolder] = useState<string[]>([
+    join(homedir(), "Downloads"),
+  ]);
   const [fonts, setFonts] = useState<FontWithSelection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sourceUrl, setSourceUrl] = useState("");
@@ -74,7 +128,7 @@ export default function ExtractFonts() {
 
   async function handleSubmit(values: {
     url: string;
-    showAllFormats: boolean;
+    downloadFolder: string[];
   }) {
     const targetUrl = values.url.trim();
 
@@ -90,7 +144,7 @@ export default function ExtractFonts() {
     setViewState("loading");
     setIsLoading(true);
     setSourceUrl(targetUrl);
-    setShowAllFormats(values.showAllFormats);
+    setDownloadFolder(values.downloadFolder);
 
     try {
       const toast = await showToast({
@@ -100,13 +154,21 @@ export default function ExtractFonts() {
       });
 
       // Extract fonts from the page
-      const options: ExtractOptions = { showAllFormats: values.showAllFormats };
-      const extractedFonts = await extractFonts(targetUrl, options);
+      const extractedFonts = await extractFonts(targetUrl);
 
-      if (extractedFonts.length === 0) {
+      // Filter by user preferences
+      const filteredFonts = filterFontsByPreferences(
+        extractedFonts,
+        preferences,
+      );
+
+      if (filteredFonts.length === 0) {
         toast.style = Toast.Style.Failure;
         toast.title = "No fonts found";
-        toast.message = "This page doesn't appear to use any web fonts";
+        toast.message =
+          extractedFonts.length > 0
+            ? "Fonts were found but filtered out by your preferences"
+            : "No downloadable fonts found on this page";
         setViewState("form");
         setIsLoading(false);
         return;
@@ -115,25 +177,26 @@ export default function ExtractFonts() {
       // Check accessibility for each font
       toast.message = "Checking font accessibility...";
       const checkedFonts = await Promise.all(
-        extractedFonts.map(checkFontAccessibility),
+        filteredFonts.map(checkFontAccessibility),
       );
 
-      // Add selection state (all selected by default)
+      // Add selection state (all deselected by default)
       const fontsWithSelection: FontWithSelection[] = checkedFonts.map(
         (font) => ({
           ...font,
-          selected: font.accessible,
+          selected: false,
         }),
       );
 
-      setFonts(fontsWithSelection);
+      // Sort by format (TTF first, OTF second, WOFF2 third)
+      const sortedFonts = sortFontsByFormat(fontsWithSelection);
+
+      setFonts(sortedFonts);
       setViewState("list");
 
-      const accessibleCount = fontsWithSelection.filter(
-        (f) => f.accessible,
-      ).length;
+      const accessibleCount = sortedFonts.filter((f) => f.accessible).length;
       toast.style = Toast.Style.Success;
-      toast.title = `Found ${fontsWithSelection.length} fonts`;
+      toast.title = `Found ${sortedFonts.length} fonts`;
       toast.message = `${accessibleCount} downloadable`;
     } catch (error) {
       await showToast({
@@ -155,6 +218,28 @@ export default function ExtractFonts() {
     );
   }
 
+  function selectAll() {
+    setFonts((prev) =>
+      prev.map((font) => ({
+        ...font,
+        selected: font.accessible,
+      })),
+    );
+  }
+
+  function deselectAll() {
+    setFonts((prev) =>
+      prev.map((font) => ({
+        ...font,
+        selected: false,
+      })),
+    );
+  }
+
+  function getDestFolder(): string {
+    return downloadFolder[0] || join(homedir(), "Downloads");
+  }
+
   async function handleDownloadSelected() {
     const selectedFonts = fonts.filter((f) => f.selected && f.accessible);
 
@@ -167,6 +252,7 @@ export default function ExtractFonts() {
       return;
     }
 
+    const destFolder = getDestFolder();
     const toast = await showToast({
       style: Toast.Style.Animated,
       title: "Downloading fonts...",
@@ -175,7 +261,7 @@ export default function ExtractFonts() {
 
     const results = await downloadFonts(
       selectedFonts,
-      getDownloadFolder(),
+      destFolder,
       (completed, total) => {
         toast.message = `${completed}/${total}`;
       },
@@ -187,7 +273,7 @@ export default function ExtractFonts() {
     if (failed === 0) {
       toast.style = Toast.Style.Success;
       toast.title = `Downloaded ${successful} fonts`;
-      toast.message = getDownloadFolder();
+      toast.message = destFolder;
     } else {
       toast.style = Toast.Style.Failure;
       toast.title = `Downloaded ${successful} fonts, ${failed} failed`;
@@ -197,13 +283,14 @@ export default function ExtractFonts() {
   }
 
   async function handleDownloadSingle(font: FontInfo) {
+    const destFolder = getDestFolder();
     const toast = await showToast({
       style: Toast.Style.Animated,
       title: "Downloading...",
       message: font.family,
     });
 
-    const result = await downloadFont(font);
+    const result = await downloadFont(font, destFolder);
 
     if (result.success) {
       toast.style = Toast.Style.Success;
@@ -239,6 +326,9 @@ export default function ExtractFonts() {
     setFonts([]);
   }
 
+  const selectedCount = fonts.filter((f) => f.selected).length;
+  const accessibleCount = fonts.filter((f) => f.accessible).length;
+
   // Form view
   if (viewState === "form" || viewState === "loading") {
     return (
@@ -247,7 +337,7 @@ export default function ExtractFonts() {
         actions={
           <ActionPanel>
             <Action.SubmitForm
-              title="Extract Fonts"
+              title="Download Fonts"
               onSubmit={handleSubmit}
               icon={Icon.Download}
             />
@@ -262,12 +352,14 @@ export default function ExtractFonts() {
           onChange={setUrl}
           autoFocus
         />
-        <Form.Checkbox
-          id="showAllFormats"
-          label="Show all formats (WOFF, TTF, OTF, etc.)"
-          value={showAllFormats}
-          onChange={setShowAllFormats}
-          info="By default, only the best format (WOFF2) is shown per font variant"
+        <Form.FilePicker
+          id="downloadFolder"
+          title="Download Folder"
+          allowMultipleSelection={false}
+          canChooseDirectories={true}
+          canChooseFiles={false}
+          value={downloadFolder}
+          onChange={setDownloadFolder}
         />
       </Form>
     );
@@ -281,7 +373,7 @@ export default function ExtractFonts() {
     >
       <List.Section
         title={`Found ${fonts.length} fonts`}
-        subtitle={getDomain(sourceUrl)}
+        subtitle={`${selectedCount} selected · ${getDomain(sourceUrl)}`}
       >
         {fonts.map((font, index) => (
           <List.Item
@@ -327,13 +419,29 @@ export default function ExtractFonts() {
                   onAction={handleDownloadSelected}
                 />
                 <Action
-                  title="Open Downloads Folder"
-                  icon={Icon.Folder}
-                  shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
-                  onAction={() => open(getDownloadFolder())}
+                  title={
+                    selectedCount === accessibleCount
+                      ? "Deselect All"
+                      : "Select All"
+                  }
+                  icon={
+                    selectedCount === accessibleCount
+                      ? Icon.Circle
+                      : Icon.CheckCircle
+                  }
+                  shortcut={{ modifiers: ["cmd"], key: "a" }}
+                  onAction={
+                    selectedCount === accessibleCount ? deselectAll : selectAll
+                  }
                 />
                 <Action
-                  title="Extract from Another URL"
+                  title="Open Download Folder"
+                  icon={Icon.Folder}
+                  shortcut={{ modifiers: ["cmd", "shift"], key: "o" }}
+                  onAction={() => open(getDestFolder())}
+                />
+                <Action
+                  title="New Search"
                   icon={Icon.ArrowLeft}
                   shortcut={{ modifiers: ["cmd"], key: "n" }}
                   onAction={goBack}

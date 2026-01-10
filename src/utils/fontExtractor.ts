@@ -255,17 +255,12 @@ function normalizeFontKey(font: FontInfo): string {
 }
 
 function deduplicateFonts(fonts: FontInfo[]): FontInfo[] {
-  // Group by normalized family + weight + style, keep only the best format
+  // Group by normalized family + weight + style + format (keep one per format)
   const groups = new Map<string, FontInfo>();
 
   for (const font of fonts) {
-    const key = normalizeFontKey(font);
-    const existing = groups.get(key);
-
-    if (
-      !existing ||
-      getFormatPriority(font.format) > getFormatPriority(existing.format)
-    ) {
+    const key = `${normalizeFontKey(font)}|${font.format}`;
+    if (!groups.has(key)) {
       groups.set(key, font);
     }
   }
@@ -369,16 +364,7 @@ async function fetchCSSWithImports(
   }
 }
 
-export interface ExtractOptions {
-  /** If true, show all formats. If false, only show best format per variant (default: false) */
-  showAllFormats?: boolean;
-}
-
-export async function extractFonts(
-  pageUrl: string,
-  options: ExtractOptions = {},
-): Promise<FontInfo[]> {
-  const { showAllFormats = false } = options;
+export async function extractFonts(pageUrl: string): Promise<FontInfo[]> {
   const allFonts: FontInfo[] = [];
   const usedFamilies = new Set<string>();
 
@@ -432,18 +418,7 @@ export async function extractFonts(
     return false;
   });
 
-  // Deduplicate by format unless showAllFormats is true
-  if (showAllFormats) {
-    // Just deduplicate by exact URL
-    const seen = new Set<string>();
-    return usedFonts.filter((font) => {
-      if (seen.has(font.url)) return false;
-      seen.add(font.url);
-      return true;
-    });
-  }
-
-  // Keep only the best format per family+weight+style
+  // Deduplicate by family+weight+style+format (keep one per format variant)
   return deduplicateFonts(usedFonts);
 }
 

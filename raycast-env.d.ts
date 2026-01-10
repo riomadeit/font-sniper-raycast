@@ -7,7 +7,18 @@
 
 /* eslint-disable @typescript-eslint/ban-types */
 
-type ExtensionPreferences = {}
+type ExtensionPreferences = {
+  /** Show WOFF2 Fonts - Include WOFF2 format fonts in results */
+  "showWoff2": boolean,
+  /** Show WOFF Fonts - Include WOFF format fonts in results */
+  "showWoff": boolean,
+  /** Show TTF Fonts - Include TTF format fonts in results */
+  "showTtf": boolean,
+  /** Show OTF Fonts - Include OTF format fonts in results */
+  "showOtf": boolean,
+  /** Show EOT Fonts - Include EOT format fonts in results */
+  "showEot": boolean
+}
 
 /** Preferences accessible in all the extension's commands */
 declare type Preferences = ExtensionPreferences
