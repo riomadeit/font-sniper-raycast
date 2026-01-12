@@ -102,11 +102,11 @@ function normalizeWeight(weight: string): string {
     "200": "ExtraLight",
     "300": "Light",
     "400": "Regular",
-    "normal": "Regular",
+    normal: "Regular",
     "500": "Medium",
     "600": "SemiBold",
     "700": "Bold",
-    "bold": "Bold",
+    bold: "Bold",
     "800": "ExtraBold",
     "900": "Black",
   };
@@ -115,21 +115,63 @@ function normalizeWeight(weight: string): string {
 
 // Common selectors that indicate primary page fonts (not library/widget fonts)
 const PRIMARY_SELECTORS = [
-  "body", "html", ":root", "*",
-  "p", "h1", "h2", "h3", "h4", "h5", "h6",
-  "a", "span", "div", "li", "ul", "ol",
-  "main", "article", "section", "header", "footer", "nav", "aside",
-  "button", "input", "textarea", "label", "form",
-  "td", "th", "table", "caption",
-  "blockquote", "pre", "code", "em", "strong", "b", "i",
+  "body",
+  "html",
+  ":root",
+  "*",
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "a",
+  "span",
+  "div",
+  "li",
+  "ul",
+  "ol",
+  "main",
+  "article",
+  "section",
+  "header",
+  "footer",
+  "nav",
+  "aside",
+  "button",
+  "input",
+  "textarea",
+  "label",
+  "form",
+  "td",
+  "th",
+  "table",
+  "caption",
+  "blockquote",
+  "pre",
+  "code",
+  "em",
+  "strong",
+  "b",
+  "i",
 ];
 
 // Library/widget class patterns to skip
 const SKIP_PATTERNS = [
-  /\.katex/i, /\.math/i, /\.latex/i, /\.mathjax/i,
-  /\.hljs/i, /\.highlight/i, /\.prism/i, /\.syntax/i,
-  /\.fa-/i, /\.icon/i, /\.material-icons/i,
-  /\.emoji/i, /\.flag-/i,
+  /\.katex/i,
+  /\.math/i,
+  /\.latex/i,
+  /\.mathjax/i,
+  /\.hljs/i,
+  /\.highlight/i,
+  /\.prism/i,
+  /\.syntax/i,
+  /\.fa-/i,
+  /\.icon/i,
+  /\.material-icons/i,
+  /\.emoji/i,
+  /\.flag-/i,
 ];
 
 function isPrimarySelector(selector: string): boolean {
@@ -150,7 +192,9 @@ function isPrimarySelector(selector: string): boolean {
   }
 
   // Also accept simple class/id selectors on common patterns
-  if (/^\.(container|wrapper|content|main|page|app|root|layout)/i.test(selector)) {
+  if (
+    /^\.(container|wrapper|content|main|page|app|root|layout)/i.test(selector)
+  ) {
     return true;
   }
 
@@ -160,14 +204,28 @@ function isPrimarySelector(selector: string): boolean {
 function extractFontFamiliesFromValue(value: string): string[] {
   const families: string[] = [];
   const genericFonts = [
-    "serif", "sans-serif", "monospace", "cursive", "fantasy",
-    "system-ui", "ui-serif", "ui-sans-serif", "ui-monospace", "ui-rounded",
-    "inherit", "initial", "unset", "revert",
+    "serif",
+    "sans-serif",
+    "monospace",
+    "cursive",
+    "fantasy",
+    "system-ui",
+    "ui-serif",
+    "ui-sans-serif",
+    "ui-monospace",
+    "ui-rounded",
+    "inherit",
+    "initial",
+    "unset",
+    "revert",
   ];
 
   // Split by comma and extract each font name
   const fontNames = value.split(",").map((f) => {
-    return f.trim().replace(/^["']|["']$/g, "").trim();
+    return f
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .trim();
   });
 
   for (const name of fontNames) {
@@ -224,19 +282,6 @@ function extractUsedFontFamilies(css: string): Set<string> {
   return families;
 }
 
-function getFormatPriority(format: FontFormat): number {
-  // Higher number = higher priority
-  const priorities: Record<FontFormat, number> = {
-    woff2: 5,
-    woff: 4,
-    ttf: 3,
-    otf: 2,
-    eot: 1,
-    unknown: 0,
-  };
-  return priorities[format];
-}
-
 function normalizeFontKey(font: FontInfo): string {
   // Normalize family: lowercase, collapse whitespace, remove quotes
   const family = font.family
@@ -288,7 +333,9 @@ function parseFontFaceBlocks(css: string, baseUrl: string): FontInfo[] {
 
     // Extract font-weight (e.g., "400", "bold", "normal")
     const weightMatch = block.match(/font-weight\s*:\s*([^;}\n]+)/i);
-    const weight = weightMatch ? normalizeWeight(weightMatch[1].trim()) : undefined;
+    const weight = weightMatch
+      ? normalizeWeight(weightMatch[1].trim())
+      : undefined;
 
     // Extract font-style (e.g., "normal", "italic", "oblique")
     const styleMatch = block.match(/font-style\s*:\s*([^;}\n]+)/i);

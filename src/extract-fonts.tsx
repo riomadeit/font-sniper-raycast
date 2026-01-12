@@ -25,6 +25,7 @@ interface Preferences {
   showTtf: boolean;
   showOtf: boolean;
   showEot: boolean;
+  convertWoff2ToTtf: boolean;
 }
 
 type ViewState = "form" | "loading" | "list";
@@ -49,7 +50,8 @@ function getFormatSortOrder(format: FontFormat): number {
 function sortFontsByFormat(fonts: FontWithSelection[]): FontWithSelection[] {
   return [...fonts].sort((a, b) => {
     // First sort by format
-    const formatDiff = getFormatSortOrder(a.format) - getFormatSortOrder(b.format);
+    const formatDiff =
+      getFormatSortOrder(a.format) - getFormatSortOrder(b.format);
     if (formatDiff !== 0) return formatDiff;
     // Then by family name
     const familyDiff = a.family.localeCompare(b.family);
@@ -265,6 +267,7 @@ export default function ExtractFonts() {
       (completed, total) => {
         toast.message = `${completed}/${total}`;
       },
+      { convertWoff2ToTtf: preferences.convertWoff2ToTtf },
     );
 
     const successful = results.filter((r) => r.success).length;
@@ -290,7 +293,9 @@ export default function ExtractFonts() {
       message: font.family,
     });
 
-    const result = await downloadFont(font, destFolder);
+    const result = await downloadFont(font, destFolder, {
+      convertWoff2ToTtf: preferences.convertWoff2ToTtf,
+    });
 
     if (result.success) {
       toast.style = Toast.Style.Success;

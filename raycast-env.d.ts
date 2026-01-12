@@ -8,16 +8,18 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Show WOFF2 Fonts - Include WOFF2 format fonts in results */
+  /** Font Formats - Include WOFF2 format fonts in results */
   "showWoff2": boolean,
-  /** Show WOFF Fonts - Include WOFF format fonts in results */
+  /** undefined - Include WOFF format fonts in results */
   "showWoff": boolean,
-  /** Show TTF Fonts - Include TTF format fonts in results */
+  /** undefined - Include TTF format fonts in results */
   "showTtf": boolean,
-  /** Show OTF Fonts - Include OTF format fonts in results */
+  /** undefined - Include OTF format fonts in results */
   "showOtf": boolean,
-  /** Show EOT Fonts - Include EOT format fonts in results */
-  "showEot": boolean
+  /** undefined - Include EOT format fonts in results */
+  "showEot": boolean,
+  /** Conversion - Automatically convert WOFF2 fonts to TTF format when downloading */
+  "convertWoff2ToTtf": boolean
 }
 
 /** Preferences accessible in all the extension's commands */

@@ -3,6 +3,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { FontInfo, DownloadResult } from "../types";
 import { sanitizeFilename } from "./urlHelpers";
+import decompressWoff2 from "woff2-encoder/decompress";
 
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -49,14 +50,27 @@ export function getDownloadFolder(): string {
   return join(homedir(), "Downloads");
 }
 
+export interface DownloadOptions {
+  convertWoff2ToTtf?: boolean;
+}
+
 export async function downloadFont(
   font: FontInfo,
   destFolder: string = getDownloadFolder(),
+  options: DownloadOptions = {},
 ): Promise<DownloadResult> {
   try {
     await ensureDirectory(destFolder);
 
-    const filename = generateFilename(font);
+    // Determine if we should convert WOFF2 to TTF
+    const shouldConvert = options.convertWoff2ToTtf && font.format === "woff2";
+    const outputFormat = shouldConvert ? "ttf" : font.format;
+
+    // Generate filename with potentially converted format
+    const fontForFilename = shouldConvert
+      ? { ...font, format: "ttf" as const }
+      : font;
+    const filename = generateFilename(fontForFilename);
     let filePath = join(destFolder, filename);
 
     // Handle filename conflicts by adding a number suffix
@@ -66,7 +80,7 @@ export async function downloadFont(
       try {
         await fs.access(filePath);
         // File exists, try next number
-        const ext = getExtension(font.format);
+        const ext = getExtension(outputFormat);
         const baseName = sanitizeFilename(font.family);
         filePath = join(destFolder, `${baseName}_${counter}${ext}`);
         counter++;
@@ -99,6 +113,11 @@ export async function downloadFont(
       data = new Uint8Array(arrayBuffer);
     }
 
+    // Convert WOFF2 to TTF if enabled
+    if (shouldConvert) {
+      data = await decompressWoff2(data);
+    }
+
     await fs.writeFile(filePath, data);
 
     return {
@@ -119,12 +138,13 @@ export async function downloadFonts(
   fonts: FontInfo[],
   destFolder: string = getDownloadFolder(),
   onProgress?: (completed: number, total: number) => void,
+  options: DownloadOptions = {},
 ): Promise<DownloadResult[]> {
   const results: DownloadResult[] = [];
   const total = fonts.length;
 
   for (let i = 0; i < fonts.length; i++) {
-    const result = await downloadFont(fonts[i], destFolder);
+    const result = await downloadFont(fonts[i], destFolder, options);
     results.push(result);
     onProgress?.(i + 1, total);
   }
