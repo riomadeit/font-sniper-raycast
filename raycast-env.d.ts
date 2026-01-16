@@ -18,7 +18,7 @@ type ExtensionPreferences = {
   "showOtf": boolean,
   /** undefined - Include EOT format fonts in results */
   "showEot": boolean,
-  /** Conversion - Automatically convert WOFF2 fonts to TTF format when downloading */
+  /** Conversion - Automatically convert web fonts (WOFF/WOFF2) to desktop formats (TTF/OTF) when downloading */
   "convertWoff2ToTtf": boolean
 }
 
