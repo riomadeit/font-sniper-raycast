@@ -9,7 +9,7 @@
 - Auto-convert to desktop format now enabled by default
 - Simplified keyboard shortcuts
 
-## Initial Release
+## Initial Release - 2026-01-15
 
 - Extract fonts from any website URL
 - Support for WOFF2, WOFF, TTF, OTF, and EOT formats
